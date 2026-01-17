@@ -42,10 +42,12 @@ jobs:
           fi
 
       - name: Sketch Hazırla
-        # Kodu güvenli bir şekilde dosyaya yazmak için env kullanıyoruz
+        # Kodu env üzerinden aktarmak tırnak işaretlerinin kaybolmasını önler
+        env:
+          SKETCH_CONTENT: ${{ github.event.inputs.sketch_code }}
         run: |
           mkdir -p MySketch
-          echo "${{ github.event.inputs.sketch_code }}" > MySketch/MySketch.ino
+          printf "%s" "$SKETCH_CONTENT" > MySketch/MySketch.ino
 
       - name: Derle ve Merged Binary Oluştur
         # --build-property ile birleştirilmiş (merged) binary dosyasının üretilmesini garanti ediyoruz
