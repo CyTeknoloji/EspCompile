@@ -1,48 +1,64 @@
-name: ESP32 Merged Build
-on: [push]
+name: ESP32 Bulut Derleyici
+
+on:
+  workflow_dispatch:
+    inputs:
+      sketch_code:
+        description: 'Arduino/ESP32 Kodu'
+        required: true
+      libraries:
+        description: 'Kütüphaneler (Virgülle ayırın)'
+        required: false
+      board_type:
+        description: 'Kart Modeli (FQBN)'
+        required: true
+        default: 'esp32:esp32:esp32'
 
 jobs:
-  build:
+  compile:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Python and esptool
-        run: pip install esptool
-
-      - name: Setup Arduino CLI
-        uses: arduino/setup-arduino-cli@v2
-
-      - name: Install ESP32 Platform
+      - name: Arduino CLI Kur
         run: |
-          arduino-cli core update-index --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
-          arduino-cli core install esp32:esp32 --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
+          echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
 
-      - name: Compile Sketch
+      - name: ESP32 Çekirdek Kurulumu
         run: |
-          # Proje klasör adını buraya yaz (Örn: Projem)
-          arduino-cli compile --fqbn esp32:esp32:esp32 --output-dir ./build ./Projem
+          ./bin/arduino-cli core update-index --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+          ./bin/arduino-cli core install esp32:esp32 --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
 
-      - name: Create Merged Binary
+      - name: Kütüphaneleri Kur
         run: |
-          # Tüm parçaları 0x0 adresinden başlayan tek bir dosyaya dikiyoruz
-          esptool.py --chip esp32 merge_bin \
-            -o build/merged.bin \
-            --flash_mode dio \
-            --flash_size 4MB \
-            0x1000 build/Projem.ino.bootloader.bin \
-            0x8000 build/Projem.ino.partitions.bin \
-            0xe000 build/boot_app0.bin \
-            0x10000 build/Projem.ino.bin
+          LIBS="${{ github.event.inputs.libraries }}"
+          if [ ! -z "$LIBS" ]; then
+            echo "$LIBS" | tr ',' '\n' | while read lib; do
+              trim_lib=$(echo "$lib" | xargs)
+              [ ! -z "$trim_lib" ] && ./bin/arduino-cli lib install "$trim_lib" || true
+            done
+          fi
 
-      - name: Zip Artifacts
+      - name: Sketch Hazırla ve Derle
         run: |
-          # İçinde merged.bin olan temiz bir paket
-          zip -j esp32_firmware.zip build/merged.bin build/*.bin
+          mkdir -p MySketch
+          cat <<EOF > MySketch/MySketch.ino
+          ${{ github.event.inputs.sketch_code }}
+          EOF
+          
+          # ESP32'de çıktı klasörünü oluşturup tüm binary dosyalarını alıyoruz
+          ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} MySketch --output-dir ./output
 
-      - name: Upload Artifact (v4)
+      - name: Binary Dosyalarını Paketle
+        # ESP32'de yükleme için birden fazla dosya (bootloader, partition, firmware) gerekir.
+        # Bunları tek bir zip içinde topluyoruz.
+        run: |
+          zip -j esp32_builds.zip output/*.bin
+
+      - name: Artifact Olarak Yayınla
         uses: actions/upload-artifact@v4
         with:
-          name: esp32-build-bundle
-          path: esp32_firmware.zip
+          name: esp32_artifacts
+          path: esp32_builds.zip
