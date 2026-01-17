@@ -44,18 +44,29 @@ jobs:
       - name: Sketch Hazırla ve Derle
         run: |
           mkdir -p MySketch
-          cat <<EOF > MySketch/MySketch.ino
-          ${{ github.event.inputs.sketch_code }}
-          EOF
+          # Kodu bir dosyaya yazarken tırnak işaretlerinden kaynaklı hataları önlemek için cat kullanıyoruz
+          echo "${{ github.event.inputs.sketch_code }}" > MySketch/MySketch.ino
           
-          # ESP32 derlemesi ve çıktıların toplanması
-          ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} MySketch --output-dir ./output
+          mkdir -p output
+          # --export-binaries parametresi bootloader ve partition dosyalarını dışa aktarır
+          ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} MySketch --output-dir ./output --export-binaries
+
+      - name: Eksik Dosyaları (boot_app0) Bul ve Getir
+        run: |
+          # ESP32'nin düzgün çalışması için gereken boot_app0.bin dosyasını sistem klasörlerinden bulup output'a kopyalıyoruz
+          FIND_BOOT_APP=$(find ~/.arduino15/packages/esp32/hardware/esp32 -name "boot_app0.bin" | head -n 1)
+          if [ ! -z "$FIND_BOOT_APP" ]; then
+            cp "$FIND_BOOT_APP" ./output/
+            echo "boot_app0.bin bulundu ve kopyalandı."
+          else
+            echo "UYARI: boot_app0.bin bulunamadı!"
+          fi
 
       - name: Binary Dosyalarını Paketle
-        # ESP32 yüklemesi için firmware.bin, bootloader.bin ve partitions.bin gerekir.
-        # Hepsini zip'liyoruz.
         run: |
-          zip -j esp32_builds.zip output/*.bin
+          # Sadece gerekli olan dosyaları paketle, karmaşıklığı önle
+          # merged olanı özellikle dışarıda bırakıyoruz ki Android tarafında karışıklık olmasın
+          zip -j esp32_builds.zip output/*.bin -x "*merged*"
 
       - name: Artifact Olarak Yayınla
         uses: actions/upload-artifact@v4
