@@ -44,16 +44,27 @@ jobs:
       - name: Sketch Hazırla ve Derle
         run: |
           mkdir -p MySketch
-          cat <<EOF > MySketch/MySketch.ino
+          cat <<'EOF' > MySketch/MySketch.ino
           ${{ github.event.inputs.sketch_code }}
           EOF
           
-          # ESP32'de çıktı klasörünü oluşturup tüm binary dosyalarını alıyoruz
+          # Derleme yap ve dosyaları ./output klasörüne at
           ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} MySketch --output-dir ./output
 
+      - name: Dosya İsimlerini Düzenle
+        # Android tarafındaki uploader'ın dosyaları kolayca tanıması için isimleri sadeleştiriyoruz
+        run: |
+          cd output
+          # Ana uygulama dosyasını isimlendir
+          mv MySketch.ino.bin firmware.bin || true
+          # Bootloader dosyasını isimlendir
+          mv MySketch.ino.bootloader.bin bootloader.bin || true
+          # Partition table dosyasını isimlendir
+          mv MySketch.ino.partitions.bin partitions.bin || true
+          # boot_app0 dosyasını isimlendir (varsa)
+          mv MySketch.ino.boot_app0.bin boot_app0.bin || true
+
       - name: Binary Dosyalarını Paketle
-        # ESP32'de yükleme için birden fazla dosya (bootloader, partition, firmware) gerekir.
-        # Bunları tek bir zip içinde topluyoruz.
         run: |
           zip -j esp32_builds.zip output/*.bin
 
