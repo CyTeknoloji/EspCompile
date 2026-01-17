@@ -41,28 +41,31 @@ jobs:
             done
           fi
 
-      - name: Sketch Hazırla ve Derle
+      - name: Sketch Hazırla
+        # Kodu güvenli bir şekilde dosyaya yazmak için env kullanıyoruz
         run: |
           mkdir -p MySketch
-          cat <<'EOF' > MySketch/MySketch.ino
-          ${{ github.event.inputs.sketch_code }}
-          EOF
-          
-          # Derleme yap ve dosyaları ./output klasörüne at
-          ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} MySketch --output-dir ./output
+          echo "${{ github.event.inputs.sketch_code }}" > MySketch/MySketch.ino
+
+      - name: Derle ve Merged Binary Oluştur
+        # --build-property ile birleştirilmiş (merged) binary dosyasının üretilmesini garanti ediyoruz
+        run: |
+          ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} MySketch \
+          --output-dir ./output \
+          --build-property "recipe.objcopy.hex.pattern=" 
 
       - name: Dosya İsimlerini Düzenle
+        # Merged dosyası bazen farklı isimle çıkabilir, onu standartlaştırıyoruz
         run: |
           cd output
-          # ÖNEMLİ: Android tarafındaki uploader MySketch.ino.bin ismini arıyor olabilir
-          # İsimleri uploader'ın "when" bloğuna göre netleştiriyoruz
+          mv MySketch.ino.merged.bin merged.bin || true
           mv MySketch.ino.bin firmware.bin || true
           mv MySketch.ino.bootloader.bin bootloader.bin || true
           mv MySketch.ino.partitions.bin partitions.bin || true
-          mv MySketch.ino.boot_app0.bin boot_app0.bin || true
 
       - name: Binary Dosyalarını Paketle
         run: |
+          # Sadece Android'in ihtiyacı olan bin dosyalarını paketle
           zip -j esp32_builds.zip output/*.bin
 
       - name: Artifact Olarak Yayınla
