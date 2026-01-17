@@ -1,5 +1,4 @@
 name: ESP32 Merged Build
-
 on: [push]
 
 jobs:
@@ -22,23 +21,28 @@ jobs:
 
       - name: Compile Sketch
         run: |
-          # 'MySketch.ino' olan yeri kendi dosya adınla, 'MySketch' klasör adınla değiştir
-          arduino-cli compile --fqbn esp32:esp32:esp32 --output-dir ./build ./MySketch
+          # Proje klasör adını buraya yaz (Örn: Projem)
+          arduino-cli compile --fqbn esp32:esp32:esp32 --output-dir ./build ./Projem
 
       - name: Create Merged Binary
         run: |
-          # Dosya yollarını derleme çıktılarına göre ayarlıyoruz
+          # Tüm parçaları 0x0 adresinden başlayan tek bir dosyaya dikiyoruz
           esptool.py --chip esp32 merge_bin \
             -o build/merged.bin \
             --flash_mode dio \
             --flash_size 4MB \
-            0x1000 build/MySketch.ino.bootloader.bin \
-            0x8000 build/MySketch.ino.partitions.bin \
+            0x1000 build/Projem.ino.bootloader.bin \
+            0x8000 build/Projem.ino.partitions.bin \
             0xe000 build/boot_app0.bin \
-            0x10000 build/MySketch.ino.bin
+            0x10000 build/Projem.ino.bin
+
+      - name: Zip Artifacts
+        run: |
+          # İçinde merged.bin olan temiz bir paket
+          zip -j esp32_firmware.zip build/merged.bin build/*.bin
 
       - name: Upload Artifact (v4)
         uses: actions/upload-artifact@v4
         with:
-          name: esp32-merged-firmware
-          path: build/merged.bin
+          name: esp32-build-bundle
+          path: esp32_firmware.zip
