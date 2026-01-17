@@ -1,76 +1,37 @@
-name: ESP32 Bulut Derleyici
+name: Build and Merge ESP32 Firmware
 
-on:
-  workflow_dispatch:
-    inputs:
-      sketch_code:
-        description: 'ESP32 Kodu'
-        required: true
-      libraries:
-        description: 'Kütüphaneler'
-        required: false
-      board_type:
-        description: 'Kart Modeli'
-        required: true
-        default: 'esp32:esp32:esp32'
+on: [push]
 
 jobs:
-  compile:
+  build:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Checkout Repository
+        uses: actions/checkout@v3
 
-      - name: Arduino CLI Kur
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
-          echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
+      - name: Install Python and esptool
+        run: pip install esptool
 
-      - name: ESP32 Çekirdek Kurulumu
-        run: |
-          ./bin/arduino-cli core update-index --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
-          ./bin/arduino-cli core install esp32:esp32 --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
-
-      - name: Kütüphaneleri Kur
-        run: |
-          LIBS="${{ github.event.inputs.libraries }}"
-          if [ ! -z "$LIBS" ]; then
-            echo "$LIBS" | tr ',' '\n' | while read lib; do
-              trim_lib=$(echo "$lib" | xargs)
-              [ ! -z "$trim_lib" ] && ./bin/arduino-cli lib install "$trim_lib" || true
-            done
-          fi
-
-      - name: Sketch Hazırla ve Derle
-        run: |
-          mkdir -p MySketch
-          # EOF'u tırnak içine almak içindeki tırnak işaretlerini korur
-          cat <<'EOF' > MySketch/MySketch.ino
-          ${{ github.event.inputs.sketch_code }}
-          EOF
-          
-          mkdir -p output
-          ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} MySketch --output-dir ./output --export-binaries
-
-      - name: Eksik Dosyaları (boot_app0) Bul ve Getir
-        run: |
-          # ESP32'nin düzgün çalışması için gereken boot_app0.bin dosyasını sistem klasörlerinden bulup output'a kopyalıyoruz
-          FIND_BOOT_APP=$(find ~/.arduino15/packages/esp32/hardware/esp32 -name "boot_app0.bin" | head -n 1)
-          if [ ! -z "$FIND_BOOT_APP" ]; then
-            cp "$FIND_BOOT_APP" ./output/
-            echo "boot_app0.bin bulundu ve kopyalandı."
-          else
-            echo "UYARI: boot_app0.bin bulunamadı!"
-          fi
-
-      - name: Binary Dosyalarını Paketle
-        run: |
-          # Sadece gerekli olan dosyaları paketle, karmaşıklığı önle
-          # merged olanı özellikle dışarıda bırakıyoruz ki Android tarafında karışıklık olmasın
-          zip -j esp32_builds.zip output/*.bin -x "*merged*"
-
-      - name: Artifact Olarak Yayınla
-        uses: actions/upload-artifact@v4
+      - name: Compile Sketch
+        uses: armink/arduino-test-action@v1
         with:
-          name: esp32_artifacts
-          path: esp32_builds.zip
+          arduino-board-fqbn: esp32:esp32:esp32
+          sketch-path: ./MySketch # Kendi klasör adınla değiştir
+          
+      - name: Create Merged Binary
+        run: |
+          # ÖNEMLİ: Dosya isimleri derleyicinin çıktılarına göre güncellenmelidir
+          esptool.py --chip esp32 merge_bin \
+            -o output/merged.bin \
+            --flash_mode dio \
+            --flash_size 4MB \
+            0x1000 build/esp32.esp32.esp32/MySketch.ino.bootloader.bin \
+            0x8000 build/esp32.esp32.esp32/MySketch.ino.partitions.bin \
+            0xe000 /home/runner/.arduino15/packages/esp32/hardware/esp32/X.X.X/tools/partitions/boot_app0.bin \
+            0x10000 build/esp32.esp32.esp32/MySketch.ino.bin
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: esp32-firmware
+          path: output/merged.bin
