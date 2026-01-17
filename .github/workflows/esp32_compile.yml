@@ -42,28 +42,33 @@ jobs:
           fi
 
       - name: Sketch Hazırla
-        # Kodu env üzerinden aktarmak tırnak işaretlerinin kaybolmasını önler
         env:
           SKETCH_CONTENT: ${{ github.event.inputs.sketch_code }}
         run: |
           mkdir -p MySketch
           printf "%s" "$SKETCH_CONTENT" > MySketch/MySketch.ino
 
-      - name: Derle ve Merged Binary Oluştur
-        # --build-property ile birleştirilmiş (merged) binary dosyasının üretilmesini garanti ediyoruz
+      - name: Derle ve Parçaları Oluştur
         run: |
-          ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} MySketch \
-          --output-dir ./output \
-          --build-property "recipe.objcopy.hex.pattern=" 
+          mkdir -p output
+          ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} MySketch --output-dir ./output
 
-      - name: Dosya İsimlerini Düzenle
-        # Merged dosyası bazen farklı isimle çıkabilir, onu standartlaştırıyoruz
+      - name: Esptool ile Profesyonel Merged Binary Oluştur
         run: |
+          # Python ve esptool kurulumu (Merged dosyasını garanti eder)
+          pip install esptool
+          
           cd output
-          mv MySketch.ino.merged.bin merged.bin || true
-          mv MySketch.ino.bin firmware.bin || true
-          mv MySketch.ino.bootloader.bin bootloader.bin || true
-          mv MySketch.ino.partitions.bin partitions.bin || true
+          # ESP32 standart adresleme yapısıyla dosyaları birleştir
+          # Bu komut 0x03 zaman aşımı hatasını önlemek için en güvenli yoldur
+          python3 -m esptool --chip esp32 merge_bin \
+            -o merged.bin \
+            --flash_mode dio \
+            --flash_freq 40m \
+            --flash_size 4MB \
+            0x1000 MySketch.ino.bootloader.bin \
+            0x8000 MySketch.ino.partitions.bin \
+            0x10000 MySketch.ino.bin
 
       - name: Binary Dosyalarını Paketle
         run: |
