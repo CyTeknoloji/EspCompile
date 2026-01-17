@@ -44,11 +44,12 @@ jobs:
       - name: Sketch Hazırla ve Derle
         run: |
           mkdir -p MySketch
-          # Kodu bir dosyaya yazarken tırnak işaretlerinden kaynaklı hataları önlemek için cat kullanıyoruz
-          echo "${{ github.event.inputs.sketch_code }}" > MySketch/MySketch.ino
+          # EOF'u tırnak içine almak içindeki tırnak işaretlerini korur
+          cat <<'EOF' > MySketch/MySketch.ino
+          ${{ github.event.inputs.sketch_code }}
+          EOF
           
           mkdir -p output
-          # --export-binaries parametresi bootloader ve partition dosyalarını dışa aktarır
           ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} MySketch --output-dir ./output --export-binaries
 
       - name: Eksik Dosyaları (boot_app0) Bul ve Getir
