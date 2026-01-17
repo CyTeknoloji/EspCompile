@@ -52,16 +52,13 @@ jobs:
           ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} MySketch --output-dir ./output
 
       - name: Dosya İsimlerini Düzenle
-        # Android tarafındaki uploader'ın dosyaları kolayca tanıması için isimleri sadeleştiriyoruz
         run: |
           cd output
-          # Ana uygulama dosyasını isimlendir
+          # ÖNEMLİ: Android tarafındaki uploader MySketch.ino.bin ismini arıyor olabilir
+          # İsimleri uploader'ın "when" bloğuna göre netleştiriyoruz
           mv MySketch.ino.bin firmware.bin || true
-          # Bootloader dosyasını isimlendir
           mv MySketch.ino.bootloader.bin bootloader.bin || true
-          # Partition table dosyasını isimlendir
           mv MySketch.ino.partitions.bin partitions.bin || true
-          # boot_app0 dosyasını isimlendir (varsa)
           mv MySketch.ino.boot_app0.bin boot_app0.bin || true
 
       - name: Binary Dosyalarını Paketle
