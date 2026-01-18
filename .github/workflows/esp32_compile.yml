@@ -7,10 +7,10 @@ on:
         description: 'Arduino/ESP32 Kodu'
         required: true
       libraries:
-        description: 'Kütüphaneler'
+        description: 'Kütüphaneler (Virgülle ayırın)'
         required: false
       board_type:
-        description: 'Kart Modeli'
+        description: 'Kart Modeli (FQBN)'
         required: true
         default: 'esp32:esp32:esp32'
 
@@ -31,53 +31,53 @@ jobs:
           ./bin/arduino-cli core update-index --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
           ./bin/arduino-cli core install esp32:esp32 --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
 
-      - name: Sketch Hazırla (Python ile Güvenli Yazım)
+      - name: Kütüphaneleri Kur
+        run: |
+          LIBS="${{ github.event.inputs.libraries }}"
+          if [ ! -z "$LIBS" ]; then
+            echo "$LIBS" | tr ',' '\n' | while read lib; do
+              trim_lib=$(echo "$lib" | xargs)
+              [ ! -z "$trim_lib" ] && ./bin/arduino-cli lib install "$trim_lib" || true
+            done
+          fi
+
+      - name: Sketch Hazırla (Karakterleri Korumak İçin Python Dokunuşu)
         shell: python
+        env:
+          SKETCH_INPUT: ${{ github.event.inputs.sketch_code }}
         run: |
           import os
-          sketch = os.environ.get('SKETCH_CODE')
+          content = os.environ.get('SKETCH_INPUT', '')
           os.makedirs('MySketch', exist_ok=True)
           with open('MySketch/MySketch.ino', 'w', encoding='utf-8') as f:
-              f.write(sketch)
-        env:
-          SKETCH_CODE: ${{ github.event.inputs.sketch_code }}
+              f.write(content)
 
-      - name: Derle
+      - name: Derle ve Parçaları Oluştur
         run: |
-          mkdir -p build_output
-          ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} MySketch --output-dir ./build_output
+          mkdir -p output
+          ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} MySketch --output-dir ./output
 
-      - name: Merged Binary Oluştur (4MB Garantili - v5 Uyumu)
+      - name: Esptool ile Merged Binary Oluştur (4MB Garantili)
         run: |
-          pip install esptool
-          
-          # Dosyaları bul
-          BOOT=$(find build_output -name "*bootloader.bin")
-          PART=$(find build_output -name "*partitions.bin")
-          APP=$(find build_output -name "MySketch.ino.bin")
-          
-          # 1. Adım: 4MB'lık içi 0xFF (boş flash) dolu bir dosya oluştur
-          # Bu komut tam 4194304 byte'lık bir kalıp oluşturur
-          printf '\377' | tr '\377' '\000' | dd of=final_merged.bin bs=1M count=4
-          tr '\000' '\377' < /dev/zero | dd of=final_merged.bin bs=1M count=4 conv=notrunc
+          # Sürümü senin ilk başarılı haline (4.x) çekiyoruz
+          pip install esptool==4.6.2
+          cd output
+          python3 -m esptool --chip esp32 merge_bin \
+            -o merged.bin \
+            --flash_mode dio \
+            --flash_freq 40m \
+            --flash_size 4MB \
+            0x1000 MySketch.ino.bootloader.bin \
+            0x8000 MySketch.ino.partitions.bin \
+            0x10000 MySketch.ino.bin
 
-          # 2. Adım: Parçaları bu 4MB'lık kalıbın içine yerleştir (merge-bin v5)
-          # --fill-flash yerine doğrudan dosyanın üzerine yazıyoruz
-          python3 -m esptool --chip esp32 merge-bin \
-            --flash-mode dio \
-            --flash-freq 40m \
-            --flash-size 4MB \
-            -o final_merged.bin \
-            0x1000 "$BOOT" \
-            0x8000 "$PART" \
-            0x10000 "$APP"
-
-          # 3. Adım: Boyutu doğrula
-          echo "DOSYA BOYUTU (4194304 OLMALI):"
-          stat -c%s final_merged.bin
+      - name: Binary Dosyalarını Paketle (Senin Zip Yapın)
+        run: |
+          # Senin orijinal zip akışın
+          zip -j esp32_builds.zip output/*.bin
 
       - name: Artifact Olarak Yayınla
         uses: actions/upload-artifact@v4
         with:
           name: esp32_artifacts
-          path: final_merged.bin
+          path: esp32_builds.zip
