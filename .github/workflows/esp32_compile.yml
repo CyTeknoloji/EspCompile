@@ -41,7 +41,7 @@ jobs:
             done
           fi
 
-      - name: Sketch Hazırla (Karakter Korumalı)
+      - name: Sketch Hazırla (Python ile Tırnak Koruması)
         shell: python
         env:
           SKETCH_INPUT: ${{ github.event.inputs.sketch_code }}
@@ -49,35 +49,20 @@ jobs:
           import os
           content = os.environ.get('SKETCH_INPUT', '')
           os.makedirs('MySketch', exist_ok=True)
+          # Tırnakları yutmadan doğrudan dosyaya yazar
           with open('MySketch/MySketch.ino', 'w', encoding='utf-8') as f:
               f.write(content)
 
-      - name: Derle
+      - name: Derle ve Parçaları Oluştur
         run: |
           mkdir -p output
+          # arduino-cli kendi içindeki esptool ile MySketch.ino.merged.bin'i zaten üretir
           ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} MySketch --output-dir ./output
-
-      - name: Esptool ile Tek Bir 4MB Binary Oluştur
-        run: |
-          pip install esptool==4.6.2
-          cd output
-          # Sadece bu dosya kalana kadar diğerlerini sileceğiz ki karışmasın
-          python3 -m esptool --chip esp32 merge_bin \
-            -o tam_sistem.bin \
-            --flash_mode dio \
-            --flash_freq 40m \
-            --flash_size 4MB \
-            0x1000 MySketch.ino.bootloader.bin \
-            0x8000 MySketch.ino.partitions.bin \
-            0x10000 MySketch.ino.bin
-          
-          # Gereksiz dosyaları siliyoruz, Android sadece tam_sistem.bin'i görsün
-          rm MySketch.ino.bootloader.bin MySketch.ino.partitions.bin MySketch.ino.bin MySketch.ino.merged.bin merged.bin || true
 
       - name: Binary Dosyalarını Paketle
         run: |
-          # ZIP içinde sadece tek bir dosya olacak: tam_sistem.bin
-          zip -j esp32_builds.zip output/tam_merged.bin
+          # Dışarıdan esptool çalıştırmıyoruz, arduino-cli'nın ürettiklerini paketliyoruz
+          zip -j esp32_builds.zip output/*.bin
 
       - name: Artifact Olarak Yayınla
         uses: actions/upload-artifact@v4
