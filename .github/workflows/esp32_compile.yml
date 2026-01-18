@@ -47,30 +47,33 @@ jobs:
           mkdir -p build_output
           ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} MySketch --output-dir ./build_output
 
-      - name: Merged Binary Oluştur (4MB Garantili)
+      - name: Merged Binary Oluştur (4MB Garantili - v5 Uyumu)
         run: |
           pip install esptool
           
-          # 1. Adım: Dosyaların yerini doğrula
+          # Dosyaları bul
           BOOT=$(find build_output -name "*bootloader.bin")
           PART=$(find build_output -name "*partitions.bin")
           APP=$(find build_output -name "MySketch.ino.bin")
           
-          # 2. Adım: merge_bin komutunu çalıştır
-          # --fill-flash 0xff : Boşlukları 0xFF ile doldurarak dosyayı fiziksel boyuta zorlar
-          # 0x0 adresine bootloader'ı veya boşluğu koyarak dosyanın 0x0'dan başlamasını sağlarız
-          python3 -m esptool --chip esp32 merge_bin \
+          # 1. Adım: 4MB'lık içi 0xFF (boş flash) dolu bir dosya oluştur
+          # Bu komut tam 4194304 byte'lık bir kalıp oluşturur
+          printf '\377' | tr '\377' '\000' | dd of=final_merged.bin bs=1M count=4
+          tr '\000' '\377' < /dev/zero | dd of=final_merged.bin bs=1M count=4 conv=notrunc
+
+          # 2. Adım: Parçaları bu 4MB'lık kalıbın içine yerleştir (merge-bin v5)
+          # --fill-flash yerine doğrudan dosyanın üzerine yazıyoruz
+          python3 -m esptool --chip esp32 merge-bin \
+            --flash-mode dio \
+            --flash-freq 40m \
+            --flash-size 4MB \
             -o final_merged.bin \
-            --flash_mode dio \
-            --flash_freq 40m \
-            --flash_size 4MB \
-            --fill-flash 0xff \
             0x1000 "$BOOT" \
             0x8000 "$PART" \
             0x10000 "$APP"
 
-          # 3. Adım: Boyut Kontrolü (Loglarda 4194304 görmelisin)
-          echo "OLUŞAN DOSYA BOYUTU:"
+          # 3. Adım: Boyutu doğrula
+          echo "DOSYA BOYUTU (4194304 OLMALI):"
           stat -c%s final_merged.bin
 
       - name: Artifact Olarak Yayınla
