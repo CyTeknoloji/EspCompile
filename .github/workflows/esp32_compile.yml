@@ -77,7 +77,7 @@ jobs:
       - name: Binary Dosyalarını Paketle
         run: |
           # ZIP içinde sadece tek bir dosya olacak: tam_sistem.bin
-          zip -j esp32_builds.zip output/tam_sistem.bin
+          zip -j esp32_builds.zip output/tam_merged.bin
 
       - name: Artifact Olarak Yayınla
         uses: actions/upload-artifact@v4
