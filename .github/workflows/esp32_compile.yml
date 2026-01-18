@@ -41,7 +41,7 @@ jobs:
             done
           fi
 
-      - name: Sketch Hazırla (Karakterleri Korumak İçin Python Dokunuşu)
+      - name: Sketch Hazırla (Karakter Korumalı)
         shell: python
         env:
           SKETCH_INPUT: ${{ github.event.inputs.sketch_code }}
@@ -52,29 +52,32 @@ jobs:
           with open('MySketch/MySketch.ino', 'w', encoding='utf-8') as f:
               f.write(content)
 
-      - name: Derle ve Parçaları Oluştur
+      - name: Derle
         run: |
           mkdir -p output
           ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} MySketch --output-dir ./output
 
-      - name: Esptool ile Merged Binary Oluştur (4MB Garantili)
+      - name: Esptool ile Tek Bir 4MB Binary Oluştur
         run: |
-          # Sürümü senin ilk başarılı haline (4.x) çekiyoruz
           pip install esptool==4.6.2
           cd output
+          # Sadece bu dosya kalana kadar diğerlerini sileceğiz ki karışmasın
           python3 -m esptool --chip esp32 merge_bin \
-            -o merged.bin \
+            -o tam_sistem.bin \
             --flash_mode dio \
             --flash_freq 40m \
             --flash_size 4MB \
             0x1000 MySketch.ino.bootloader.bin \
             0x8000 MySketch.ino.partitions.bin \
             0x10000 MySketch.ino.bin
+          
+          # Gereksiz dosyaları siliyoruz, Android sadece tam_sistem.bin'i görsün
+          rm MySketch.ino.bootloader.bin MySketch.ino.partitions.bin MySketch.ino.bin MySketch.ino.merged.bin merged.bin || true
 
-      - name: Binary Dosyalarını Paketle (Senin Zip Yapın)
+      - name: Binary Dosyalarını Paketle
         run: |
-          # Senin orijinal zip akışın
-          zip -j esp32_builds.zip output/*.bin
+          # ZIP içinde sadece tek bir dosya olacak: tam_sistem.bin
+          zip -j esp32_builds.zip output/tam_sistem.bin
 
       - name: Artifact Olarak Yayınla
         uses: actions/upload-artifact@v4
