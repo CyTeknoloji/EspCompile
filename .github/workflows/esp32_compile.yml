@@ -7,10 +7,10 @@ on:
         description: 'Arduino/ESP32 Kodu'
         required: true
       libraries:
-        description: 'Kütüphaneler (Virgülle ayırın)'
+        description: 'Kütüphaneler'
         required: false
       board_type:
-        description: 'Kart Modeli (FQBN)'
+        description: 'Kart Modeli'
         required: true
         default: 'esp32:esp32:esp32'
 
@@ -31,42 +31,29 @@ jobs:
           ./bin/arduino-cli core update-index --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
           ./bin/arduino-cli core install esp32:esp32 --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
 
-      - name: Kütüphaneleri Kur
+      - name: Sketch Hazırla (Python ile Güvenli Yazım)
+        shell: python
         run: |
-          LIBS="${{ github.event.inputs.libraries }}"
-          if [ ! -z "$LIBS" ]; then
-            echo "$LIBS" | tr ',' '\n' | while read lib; do
-              trim_lib=$(echo "$lib" | xargs)
-              [ ! -z "$trim_lib" ] && ./bin/arduino-cli lib install "$trim_lib" || true
-            done
-          fi
-
-      - name: Sketch Hazırla
-        run: |
-          mkdir -p MySketch
-          # Kodun bozulmaması için en güvenli yöntem
-          echo "${{ github.event.inputs.sketch_code }}" > MySketch/MySketch.ino
+          import os
+          sketch = os.environ.get('SKETCH_CODE')
+          os.makedirs('MySketch', exist_ok=True)
+          with open('MySketch/MySketch.ino', 'w', encoding='utf-8') as f:
+              f.write(sketch)
+        env:
+          SKETCH_CODE: ${{ github.event.inputs.sketch_code }}
 
       - name: Derle
         run: |
           mkdir -p build_output
           ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} MySketch --output-dir ./build_output
 
-      - name: Merged Binary Oluştur (4MB Kesin Çözüm)
+      - name: Merged Binary Oluştur (4MB)
         run: |
           pip install esptool
-          
-          # Dosya yollarını açıkça tanımlayalım
           BOOTLOADER=$(find build_output -name "*bootloader.bin")
           PARTITIONS=$(find build_output -name "*partitions.bin")
           APP=$(find build_output -name "MySketch.ino.bin")
           
-          # Dosyalar bulundu mu kontrol et (Loglarda görebilirsin)
-          echo "Bootloader: $BOOTLOADER"
-          echo "Partitions: $PARTITIONS"
-          echo "App: $APP"
-
-          # 4MB Tam İmaj oluşturma
           python3 -m esptool --chip esp32 merge_bin \
             -o final_merged.bin \
             --flash_mode dio \
@@ -76,14 +63,8 @@ jobs:
             0x8000 "$PARTITIONS" \
             0x10000 "$APP"
 
-      - name: Paketle ve Yayınla
-        run: |
-          # final_merged.bin dosyasının 4MB (4,194,304 byte) olduğunu doğrula
-          ls -l final_merged.bin
-          zip -j esp32_builds.zip final_merged.bin
-
       - name: Artifact Olarak Yayınla
         uses: actions/upload-artifact@v4
         with:
           name: esp32_artifacts
-          path: esp32_builds.zip
+          path: final_merged.bin
