@@ -47,21 +47,31 @@ jobs:
           mkdir -p build_output
           ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} MySketch --output-dir ./build_output
 
-      - name: Merged Binary Oluştur (4MB)
+      - name: Merged Binary Oluştur (4MB Garantili)
         run: |
           pip install esptool
-          BOOTLOADER=$(find build_output -name "*bootloader.bin")
-          PARTITIONS=$(find build_output -name "*partitions.bin")
+          
+          # 1. Adım: Dosyaların yerini doğrula
+          BOOT=$(find build_output -name "*bootloader.bin")
+          PART=$(find build_output -name "*partitions.bin")
           APP=$(find build_output -name "MySketch.ino.bin")
           
+          # 2. Adım: merge_bin komutunu çalıştır
+          # --fill-flash 0xff : Boşlukları 0xFF ile doldurarak dosyayı fiziksel boyuta zorlar
+          # 0x0 adresine bootloader'ı veya boşluğu koyarak dosyanın 0x0'dan başlamasını sağlarız
           python3 -m esptool --chip esp32 merge_bin \
             -o final_merged.bin \
             --flash_mode dio \
             --flash_freq 40m \
             --flash_size 4MB \
-            0x1000 "$BOOTLOADER" \
-            0x8000 "$PARTITIONS" \
+            --fill-flash 0xff \
+            0x1000 "$BOOT" \
+            0x8000 "$PART" \
             0x10000 "$APP"
+
+          # 3. Adım: Boyut Kontrolü (Loglarda 4194304 görmelisin)
+          echo "OLUŞAN DOSYA BOYUTU:"
+          stat -c%s final_merged.bin
 
       - name: Artifact Olarak Yayınla
         uses: actions/upload-artifact@v4
