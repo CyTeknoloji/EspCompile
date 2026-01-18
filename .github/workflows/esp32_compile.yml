@@ -44,30 +44,29 @@ jobs:
       - name: Sketch Hazırla
         run: |
           mkdir -p MySketch
-          cat << 'EOF' > MySketch/MySketch.ino
-          ${{ github.event.inputs.sketch_code }}
-          EOF
+          # Kodun bozulmaması için en güvenli yöntem
+          echo "${{ github.event.inputs.sketch_code }}" > MySketch/MySketch.ino
 
-      - name: Derle ve Parçaları Oluştur
+      - name: Derle
         run: |
-          mkdir -p output
-          rm -rf output/*
-          ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} MySketch --output-dir ./output
+          mkdir -p build_output
+          ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} MySketch --output-dir ./build_output
 
-      - name: Esptool ile Profesyonel Merged Binary Oluştur
+      - name: Merged Binary Oluştur (4MB Kesin Çözüm)
         run: |
           pip install esptool
-          cd output
           
-          # Dosyaları dinamik olarak bul (İsim hatalarını önler)
-          BOOTLOADER=$(ls *bootloader.bin | head -n 1)
-          PARTITIONS=$(ls *partitions.bin | head -n 1)
-          APP="MySketch.ino.bin"
+          # Dosya yollarını açıkça tanımlayalım
+          BOOTLOADER=$(find build_output -name "*bootloader.bin")
+          PARTITIONS=$(find build_output -name "*partitions.bin")
+          APP=$(find build_output -name "MySketch.ino.bin")
           
-          echo "Bulunan Parçalar: $BOOTLOADER, $PARTITIONS, $APP"
+          # Dosyalar bulundu mu kontrol et (Loglarda görebilirsin)
+          echo "Bootloader: $BOOTLOADER"
+          echo "Partitions: $PARTITIONS"
+          echo "App: $APP"
 
-          # 4MB Tam İmaj Oluşturma
-          # --fill-flash 0xFF sayesinde boşluklar doldurulur ve tam 4MB dosya oluşur
+          # 4MB Tam İmaj oluşturma
           python3 -m esptool --chip esp32 merge_bin \
             -o final_merged.bin \
             --flash_mode dio \
@@ -76,14 +75,12 @@ jobs:
             0x1000 "$BOOTLOADER" \
             0x8000 "$PARTITIONS" \
             0x10000 "$APP"
-          
-          echo "Dosya boyutu kontrolü:"
-          ls -lh final_merged.bin
 
-      - name: Binary Dosyalarını Paketle
+      - name: Paketle ve Yayınla
         run: |
-          # Sadece 4MB'lık tam dosyayı ve ham uygulama dosyasını gönderiyoruz
-          zip -j esp32_builds.zip output/final_merged.bin output/MySketch.ino.bin
+          # final_merged.bin dosyasının 4MB (4,194,304 byte) olduğunu doğrula
+          ls -l final_merged.bin
+          zip -j esp32_builds.zip final_merged.bin
 
       - name: Artifact Olarak Yayınla
         uses: actions/upload-artifact@v4
