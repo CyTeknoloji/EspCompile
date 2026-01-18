@@ -56,8 +56,8 @@ jobs:
       - name: Derle ve Parçaları Oluştur
         run: |
           mkdir -p output
-          # arduino-cli kendi içindeki esptool ile MySketch.ino.merged.bin'i zaten üretir
-          ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} MySketch --output-dir ./output
+          # build.flash_mode=dio ekleyerek en uyumlu hale getiriyoruz
+          ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} --build-properties build.flash_mode=dio MySketch --output-dir ./output
 
       - name: Binary Dosyalarını Paketle
         run: |
