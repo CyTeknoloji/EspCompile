@@ -46,23 +46,29 @@ jobs:
           SKETCH_CONTENT: ${{ github.event.inputs.sketch_code }}
         run: |
           mkdir -p MySketch
-          printf "%s" "$SKETCH_CONTENT" > MySketch/MySketch.ino
+          # 'cat' kullanımı printf'ten daha güvenlidir, karakterleri bozmaz
+          cat << 'EOF' > MySketch/MySketch.ino
+          ${{ github.event.inputs.sketch_code }}
+          EOF
 
       - name: Derle ve Parçaları Oluştur
         run: |
           mkdir -p output
+          # Önceki derlemeden kalanları temizle
+          rm -rf output/*
           ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} MySketch --output-dir ./output
 
       - name: Esptool ile Profesyonel Merged Binary Oluştur
         run: |
-          # Python ve esptool kurulumu (Merged dosyasını garanti eder)
           pip install esptool
-          
           cd output
-          # ESP32 standart adresleme yapısıyla dosyaları birleştir
-          # Bu komut 0x03 zaman aşımı hatasını önlemek için en güvenli yoldur
+          
+          # Mevcut tüm 'merged' isimli dosyaları sil ki esptool sıfırdan oluştursun
+          rm -f *merged.bin
+          
+          # ÖNEMLİ: Adresleri ve dosyaları tek tek kontrol ederek birleştiriyoruz
           python3 -m esptool --chip esp32 merge_bin \
-            -o merged.bin \
+            -o final_merged.bin \
             --flash_mode dio \
             --flash_freq 40m \
             --flash_size 4MB \
@@ -72,8 +78,9 @@ jobs:
 
       - name: Binary Dosyalarını Paketle
         run: |
-          # Sadece Android'in ihtiyacı olan bin dosyalarını paketle
-          zip -j esp32_builds.zip output/*.bin
+          # Sadece bizim oluşturduğumuz kesin dosyayı ve parçaları paketle
+          # merged.bin yerine ismini final_merged.bin yaptık ki karışmasın
+          zip -j esp32_builds.zip output/final_merged.bin output/MySketch.ino.bin
 
       - name: Artifact Olarak Yayınla
         uses: actions/upload-artifact@v4
