@@ -42,11 +42,8 @@ jobs:
           fi
 
       - name: Sketch Hazırla
-        env:
-          SKETCH_CONTENT: ${{ github.event.inputs.sketch_code }}
         run: |
           mkdir -p MySketch
-          # 'cat' kullanımı printf'ten daha güvenlidir, karakterleri bozmaz
           cat << 'EOF' > MySketch/MySketch.ino
           ${{ github.event.inputs.sketch_code }}
           EOF
@@ -54,7 +51,6 @@ jobs:
       - name: Derle ve Parçaları Oluştur
         run: |
           mkdir -p output
-          # Önceki derlemeden kalanları temizle
           rm -rf output/*
           ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} MySketch --output-dir ./output
 
@@ -63,23 +59,30 @@ jobs:
           pip install esptool
           cd output
           
-          # Mevcut tüm 'merged' isimli dosyaları sil ki esptool sıfırdan oluştursun
-          rm -f *merged.bin
+          # Dosyaları dinamik olarak bul (İsim hatalarını önler)
+          BOOTLOADER=$(ls *bootloader.bin | head -n 1)
+          PARTITIONS=$(ls *partitions.bin | head -n 1)
+          APP="MySketch.ino.bin"
           
-          # ÖNEMLİ: Adresleri ve dosyaları tek tek kontrol ederek birleştiriyoruz
+          echo "Bulunan Parçalar: $BOOTLOADER, $PARTITIONS, $APP"
+
+          # 4MB Tam İmaj Oluşturma
+          # --fill-flash 0xFF sayesinde boşluklar doldurulur ve tam 4MB dosya oluşur
           python3 -m esptool --chip esp32 merge_bin \
             -o final_merged.bin \
             --flash_mode dio \
             --flash_freq 40m \
             --flash_size 4MB \
-            0x1000 MySketch.ino.bootloader.bin \
-            0x8000 MySketch.ino.partitions.bin \
-            0x10000 MySketch.ino.bin
+            0x1000 "$BOOTLOADER" \
+            0x8000 "$PARTITIONS" \
+            0x10000 "$APP"
+          
+          echo "Dosya boyutu kontrolü:"
+          ls -lh final_merged.bin
 
       - name: Binary Dosyalarını Paketle
         run: |
-          # Sadece bizim oluşturduğumuz kesin dosyayı ve parçaları paketle
-          # merged.bin yerine ismini final_merged.bin yaptık ki karışmasın
+          # Sadece 4MB'lık tam dosyayı ve ham uygulama dosyasını gönderiyoruz
           zip -j esp32_builds.zip output/final_merged.bin output/MySketch.ino.bin
 
       - name: Artifact Olarak Yayınla
