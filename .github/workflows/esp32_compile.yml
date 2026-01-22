@@ -37,7 +37,10 @@ jobs:
           if [ ! -z "$LIBS" ]; then
             echo "$LIBS" | tr ',' '\n' | while read lib; do
               trim_lib=$(echo "$lib" | xargs)
-              [ ! -z "$trim_lib" ] && ./bin/arduino-cli lib install "$trim_lib" || true
+              # Kütüphane bulunamazsa hata vermemesi için arama yapıp kurmayı deneyebiliriz
+              if [ ! -z "$trim_lib" ]; then
+                ./bin/arduino-cli lib install "$trim_lib" || ./bin/arduino-cli lib install "${trim_lib//_/-}" || true
+              fi
             done
           fi
 
@@ -56,8 +59,8 @@ jobs:
       - name: Derle ve Parçaları Oluştur
         run: |
           mkdir -p output
-          # build.flash_mode=dio ekleyerek en uyumlu hale getiriyoruz
-          ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} --build-properties build.flash_mode=dio MySketch --output-dir ./output
+          # --build-properties yerine --build-property kullanarak deprecated uyarısını siliyoruz
+          ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} --build-property build.flash_mode=dio MySketch --output-dir ./output
 
       - name: Binary Dosyalarını Paketle
         run: |
