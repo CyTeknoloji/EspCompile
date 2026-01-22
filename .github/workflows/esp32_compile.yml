@@ -37,9 +37,12 @@ jobs:
           if [ ! -z "$LIBS" ]; then
             echo "$LIBS" | tr ',' '\n' | while read lib; do
               trim_lib=$(echo "$lib" | xargs)
-              # Kütüphane bulunamazsa hata vermemesi için arama yapıp kurmayı deneyebiliriz
               if [ ! -z "$trim_lib" ]; then
-                ./bin/arduino-cli lib install "$trim_lib" || ./bin/arduino-cli lib install "${trim_lib//_/-}" || true
+                # 1. Önce tam ismiyle kurmayı dene
+                ./bin/arduino-cli lib install "$trim_lib" || \
+                # 2. Olmazsa kütüphaneyi arayıp ilk sonucu kurmayı dene (Gelişmiş)
+                (./bin/arduino-cli lib search "$trim_lib" | grep "Name:" | head -n 1 | cut -d' ' -f2- | xargs ./bin/arduino-cli lib install) || \
+                true
               fi
             done
           fi
