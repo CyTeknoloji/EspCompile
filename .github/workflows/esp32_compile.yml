@@ -38,11 +38,14 @@ jobs:
             echo "$LIBS" | tr ',' '\n' | while read lib; do
               trim_lib=$(echo "$lib" | xargs)
               if [ ! -z "$trim_lib" ]; then
-                # 1. Önce tam ismiyle kurmayı dene
+                echo "--- Kuruluyor: $trim_lib ---"
+                # 1. Strateji: Doğrudan isimle dene
                 ./bin/arduino-cli lib install "$trim_lib" || \
-                # 2. Olmazsa kütüphaneyi arayıp ilk sonucu kurmayı dene (Gelişmiş)
+                # 2. Strateji: Header dosyası olarak ara (TouchScreen.h vb. için kritik)
+                (./bin/arduino-cli lib search --headers "$trim_lib.h" | grep "Name:" | head -n 1 | cut -d' ' -f2- | xargs ./bin/arduino-cli lib install) || \
+                # 3. Strateji: Genel arama yapıp ilk popüler sonucu kur
                 (./bin/arduino-cli lib search "$trim_lib" | grep "Name:" | head -n 1 | cut -d' ' -f2- | xargs ./bin/arduino-cli lib install) || \
-                true
+                echo "$trim_lib için uygun kütüphane bulunamadı."
               fi
             done
           fi
