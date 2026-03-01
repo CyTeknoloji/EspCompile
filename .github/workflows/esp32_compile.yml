@@ -31,37 +31,44 @@ jobs:
           ./bin/arduino-cli core update-index --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
           ./bin/arduino-cli core install esp32:esp32 --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
 
-      - name: Kütüphaneleri Kur (Evrensel Yöntem)
+      - name: Kütüphaneleri Kur (Tırnak ve Hata Ayıklamalı)
         run: |
           LIBS="${{ github.event.inputs.libraries }}"
           if [ ! -z "$LIBS" ]; then
+            # Virgülle ayrılmış listeyi satırlara böl ve işle
             echo "$LIBS" | tr ',' '\n' | while read lib; do
+              # Boşlukları temizle
               trim_lib=$(echo "$lib" | xargs)
+              
               if [ ! -z "$trim_lib" ]; then
                 echo "--- İşleniyor: $trim_lib ---"
                 
-                # 1. STRATEJİ: Doğrudan kütüphane adıyla kurmayı dene
+                # ÖZEL DURUM: Çok kullanılan kütüphaneleri manuel eşleştir (En garantisi)
+                if [[ "$trim_lib" == "DHT" ]]; then
+                  ./bin/arduino-cli lib install "DHT sensor library"
+                  ./bin/arduino-cli lib install "Adafruit Unified Sensor"
+                  continue
+                elif [[ "$trim_lib" == "Adafruit_GFX" ]]; then
+                  ./bin/arduino-cli lib install "Adafruit GFX Library"
+                  continue
+                fi
+
+                # 1. STRATEJİ: Doğrudan ismiyle kurmayı dene
                 if ./bin/arduino-cli lib install "$trim_lib"; then
                   echo "$trim_lib başarıyla kuruldu."
                 else
-                  echo "$trim_lib doğrudan bulunamadı, arama yapılıyor..."
+                  echo "$trim_lib bulunamadı, arama yapılıyor..."
                   
-                  # 2. STRATEJİ: Kütüphaneyi ara ve ilk çıkan ismin TAM halini al
-                  # 'lib search' çıktısındaki 'Name:' satırını yakalıyoruz
-                  SEARCH_NAME=$(./bin/arduino-cli lib search "$trim_lib" --format text | grep "Name:" | head -n 1 | cut -d' ' -f2-)
+                  # 2. STRATEJİ: Arama yap ve dönen ismi temizle (Tırnakları kaldır)
+                  # tr -d '"' komutu ile tırnakları siliyoruz
+                  SEARCH_NAME=$(./bin/arduino-cli lib search "$trim_lib" --format text | grep "Name:" | head -n 1 | cut -d' ' -f2- | tr -d '"' | xargs)
                   
                   if [ ! -z "$SEARCH_NAME" ]; then
-                    echo "Arama sonucu bulundu: $SEARCH_NAME. Kuruluyor..."
-                    ./bin/arduino-cli lib install "$SEARCH_NAME"
+                    echo "Temizlenmiş isim bulundu: $SEARCH_NAME. Kuruluyor..."
+                    ./bin/arduino-cli lib install "$SEARCH_NAME" || echo "Kurulum başarısız."
                   else
-                    echo "$trim_lib için eşleşme bulunamadı."
+                    echo "$trim_lib için eşleşme yok."
                   fi
-                fi
-
-                # BAĞIMLILIK KONTROLÜ: DHT ve Adafruit GFX için ortak ihtiyaç
-                if [[ "$trim_lib" == *"DHT"* || "$trim_lib" == *"GFX"* ]]; then
-                  echo "Bağımlılıklar kontrol ediliyor: Adafruit Unified Sensor..."
-                  ./bin/arduino-cli lib install "Adafruit Unified Sensor" || true
                 fi
               fi
             done
