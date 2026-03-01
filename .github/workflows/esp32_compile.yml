@@ -31,30 +31,37 @@ jobs:
           ./bin/arduino-cli core update-index --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
           ./bin/arduino-cli core install esp32:esp32 --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
 
-      - name: Kütüphaneleri Kur (Gelişmiş & Bağımlılık Destekli)
+      - name: Kütüphaneleri Kur (Zorlamalı Header Araması)
         run: |
           LIBS="${{ github.event.inputs.libraries }}"
           if [ ! -z "$LIBS" ]; then
+            # Virgülle ayrılmış listeyi satırlara böl
             echo "$LIBS" | tr ',' '\n' | while read lib; do
+              # Boşlukları temizle
               trim_lib=$(echo "$lib" | xargs)
+              
               if [ ! -z "$trim_lib" ]; then
-                echo "--- Kuruluyor: $trim_lib ---"
+                echo "--- Aranan Header: $trim_lib.h ---"
                 
-                # Özel kütüphane eşleşmeleri (En çok hata verenler)
-                if [[ "$trim_lib" == "Adafruit_GFX" || "$trim_lib" == "Adafruit_GFX.h" ]]; then
-                  ./bin/arduino-cli lib install "Adafruit GFX Library"
-                  continue
-                fi
-
-                # 1. Strateji: Doğrudan header ismiyle arama yap ve İLK popüler sonucu kur
-                # --format json ile en tepedeki (en çok indirilen/uygun) kütüphaneyi seçiyoruz
-                LIB_NAME=$(./bin/arduino-cli lib search --headers "$trim_lib.h" --format json | jq -r '.libraries[0].name // empty')
+                # 1. ADIM: Header dosyasına göre arama yap ve tüm sonuçları al
+                # --headers parametresi ile DHT.h gibi dosyaları içeren kütüphaneleri bulur
+                SEARCH_RESULTS=$(./bin/arduino-cli lib search --headers "$trim_lib.h" --format json)
+                
+                # 2. ADIM: JSON içinden ilk (en alakalı) kütüphanenin adını çek
+                # jq yüklü gelir, kütüphane adını bulur
+                LIB_NAME=$(echo "$SEARCH_RESULTS" | jq -r '.libraries[0].name // empty')
                 
                 if [ ! -z "$LIB_NAME" ] && [ "$LIB_NAME" != "null" ]; then
-                  echo "Bulunan kütüphane: $LIB_NAME"
+                  echo "Bulunan ve Kurulan Kütüphane: $LIB_NAME"
                   ./bin/arduino-cli lib install "$LIB_NAME"
+                  
+                  # ÖZEL DURUM: DHT ve Adafruit kütüphaneleri genellikle Unified Sensor bağımlılığı ister
+                  if [[ "$LIB_NAME" == *"DHT"* || "$LIB_NAME" == *"Adafruit"* ]]; then
+                     ./bin/arduino-cli lib install "Adafruit Unified Sensor" || true
+                  fi
                 else
-                  # 2. Strateji: Eğer header araması sonuç vermezse düz isimle kurmayı dene
+                  # 3. ADIM: Eğer header ile bulunamazsa, düz isimle kurmayı dene
+                  echo "Header ile bulunamadı, düz isim deneniyor: $trim_lib"
                   ./bin/arduino-cli lib install "$trim_lib" || echo "$trim_lib kurulamadı."
                 fi
               fi
