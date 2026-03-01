@@ -31,21 +31,27 @@ jobs:
           ./bin/arduino-cli core update-index --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
           ./bin/arduino-cli core install esp32:esp32 --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
 
-      - name: Kütüphaneleri Kur
+      - name: Kütüphaneleri Kur (Kesin Çözüm)
         run: |
           LIBS="${{ github.event.inputs.libraries }}"
           if [ ! -z "$LIBS" ]; then
             echo "$LIBS" | tr ',' '\n' | while read lib; do
               trim_lib=$(echo "$lib" | xargs)
               if [ ! -z "$trim_lib" ]; then
-                echo "--- Kuruluyor: $trim_lib ---"
+                echo "--- İşleniyor: $trim_lib ---"
+                
+                # ÖNCELİK: Eğer DHT ise bilinen en stabil kütüphaneyi kur
+                if [[ "$trim_lib" == "DHT" || "$trim_lib" == "DHT.h" ]]; then
+                  ./bin/arduino-cli lib install "DHT sensor library"
+                  ./bin/arduino-cli lib install "Adafruit Unified Sensor"
+                  continue
+                fi
+
                 # 1. Strateji: Doğrudan isimle dene
                 ./bin/arduino-cli lib install "$trim_lib" || \
-                # 2. Strateji: Header dosyası olarak ara (TouchScreen.h vb. için kritik)
-                (./bin/arduino-cli lib search --headers "$trim_lib.h" | grep "Name:" | head -n 1 | cut -d' ' -f2- | xargs ./bin/arduino-cli lib install) || \
-                # 3. Strateji: Genel arama yapıp ilk popüler sonucu kur
-                (./bin/arduino-cli lib search "$trim_lib" | grep "Name:" | head -n 1 | cut -d' ' -f2- | xargs ./bin/arduino-cli lib install) || \
-                echo "$trim_lib için uygun kütüphane bulunamadı."
+                # 2. Strateji: Header dosyası olarak ara ve İLK sonucu zorla kur
+                (./bin/arduino-cli lib search --headers "$trim_lib.h" --format json | jq -r '.libraries[0].name' | xargs -I {} ./bin/arduino-cli lib install "{}") || \
+                echo "$trim_lib bulunamadı."
               fi
             done
           fi
