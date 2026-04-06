@@ -51,6 +51,10 @@ jobs:
                 elif [[ "$trim_lib" == "Adafruit_GFX" ]]; then
                   ./bin/arduino-cli lib install "Adafruit GFX Library"
                   continue
+                # YENİ EKLENEN KISIM: ESP32 için SoftwareSerial eşleşmesi
+                elif [[ "$trim_lib" == *"SoftwareSerial"* ]]; then
+                  ./bin/arduino-cli lib install "EspSoftwareSerial"
+                  continue
                 fi
 
                 # 1. STRATEJİ: Doğrudan ismiyle kurmayı dene
