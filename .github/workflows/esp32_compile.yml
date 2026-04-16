@@ -65,6 +65,10 @@ jobs:
                 elif [[ "$trim_lib" == *"TinyGPS"* ]]; then
                   ./bin/arduino-cli lib install "TinyGPSPlus"
                   continue
+                  # Ses kütüphanesi (AudioGeneratorMP3.h vb.) için yönlendirme
+                elif [[ "$trim_lib" == *"AudioGenerator"* || "$trim_lib" == *"ESP8266Audio"* ]]; then
+                  ./bin/arduino-cli lib install "ESP8266Audio"
+                  continue
                 # YENİ EKLENEN KISIM: ESP32 için SoftwareSerial eşleşmesi
                 elif [[ "$trim_lib" == *"SoftwareSerial"* ]]; then
                   ./bin/arduino-cli lib install "EspSoftwareSerial"
