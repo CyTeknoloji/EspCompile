@@ -65,6 +65,10 @@ jobs:
                 elif [[ "$trim_lib" == *"TinyGPS"* ]]; then
                   ./bin/arduino-cli lib install "TinyGPSPlus"
                   continue
+                  # DS1302 RTC Saat modülü için yönlendirme
+                elif [[ "$trim_lib" == *"DS1302"* ]]; then
+                  ./bin/arduino-cli lib install "DS1302"
+                  continue
                   # Ses kütüphanesi (AudioGeneratorMP3.h vb.) için yönlendirme
                 elif [[ "$trim_lib" == *"AudioGenerator"* || "$trim_lib" == *"ESP8266Audio"* ]]; then
                   ./bin/arduino-cli lib install "ESP8266Audio"
