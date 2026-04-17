@@ -61,6 +61,10 @@ jobs:
                 elif [[ "$trim_lib" == "Adafruit_GFX" ]]; then
                   ./bin/arduino-cli lib install "Adafruit GFX Library"
                   continue
+                  # ESP32 BluetoothSerial için çekirdek içi kütüphaneyi zorla
+                elif [[ "$trim_lib" == *"BluetoothSerial"* ]]; then
+                  ./bin/arduino-cli lib install "BluetoothSerial"
+                  continue
                   # TinyGPS++ kütüphanesini TinyGPSPlus olarak yönlendir
                 elif [[ "$trim_lib" == *"TinyGPS"* ]]; then
                   ./bin/arduino-cli lib install "TinyGPSPlus"
