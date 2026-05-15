@@ -54,9 +54,15 @@ jobs:
                 echo "--- İşleniyor: $trim_lib ---"
                 
                 # ÖZEL DURUM: Çok kullanılan kütüphaneleri manuel eşleştir (En garantisi)
-                if [[ "$trim_lib" == "DHT" ]]; then
+                # DHT türevlerinin hepsini yakala (büyük/küçük harf veya uzantı dahil)
+                if [[ "${trim_lib,,}" == *"dht"* ]]; then
                   ./bin/arduino-cli lib install "DHT sensor library"
                   ./bin/arduino-cli lib install "Adafruit Unified Sensor"
+                  continue
+                # Adafruit PWM Servo için eşleşme
+                elif [[ "${trim_lib,,}" == *"pwmservo"* || "${trim_lib,,}" == *"adafruit_pwm"* ]]; then
+                  ./bin/arduino-cli lib install "Adafruit PWM Servo Driver Library"
+                  ./bin/arduino-cli lib install "Adafruit BusIO"
                   continue
                 elif [[ "$trim_lib" == "Adafruit_GFX" ]]; then
                   ./bin/arduino-cli lib install "Adafruit GFX Library"
@@ -77,7 +83,7 @@ jobs:
                 elif [[ "$trim_lib" == *"AudioGenerator"* || "$trim_lib" == *"ESP8266Audio"* ]]; then
                   ./bin/arduino-cli lib install "ESP8266Audio"
                   continue
-                # YENİ EKLENEN KISIM: ESP32 için SoftwareSerial eşleşmesi
+                # ESP32 için SoftwareSerial eşleşmesi
                 elif [[ "$trim_lib" == *"SoftwareSerial"* ]]; then
                   ./bin/arduino-cli lib install "EspSoftwareSerial"
                   continue
@@ -90,7 +96,6 @@ jobs:
                   echo "$trim_lib bulunamadı, arama yapılıyor..."
                   
                   # 2. STRATEJİ: Arama yap ve dönen ismi temizle (Tırnakları kaldır)
-                  # tr -d '"' komutu ile tırnakları siliyoruz
                   SEARCH_NAME=$(./bin/arduino-cli lib search "$trim_lib" --format text | grep "Name:" | head -n 1 | cut -d' ' -f2- | tr -d '"' | xargs)
                   
                   if [ ! -z "$SEARCH_NAME" ]; then
