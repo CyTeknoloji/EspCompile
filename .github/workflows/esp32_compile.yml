@@ -7,7 +7,7 @@ on:
         description: 'Arduino/ESP32 Kodu'
         required: true
       libraries:
-        description: 'Kütüphaneler (Virgülle ayırın, Library Manager adları)'
+        description: 'Kütüphaneler (Virgülle ayırın)'
         required: false
       board_type:
         description: 'Kart Modeli (FQBN)'
@@ -32,7 +32,7 @@ jobs:
           path: |
             ~/.arduino15
             ~/Arduino/libraries
-          key: ${{ runner.os }}-arduino-esp32-v2
+          key: ${{ runner.os }}-arduino-esp32-v3
 
       - name: ESP32 Çekirdek Kurulumu
         run: |
@@ -43,6 +43,7 @@ jobs:
         shell: bash
         env:
           LIBS: ${{ github.event.inputs.libraries }}
+          SKETCH_CODE: ${{ github.event.inputs.sketch_code }}
         run: |
           set -euo pipefail
           CLI=./bin/arduino-cli
@@ -51,14 +52,32 @@ jobs:
             local name="$1"
             [ -z "$name" ] && return 0
             echo "--- Kuruluyor: $name ---"
-            $CLI lib install "$name" || echo "UYARI: $name kurulamadı"
+            if $CLI lib install "$name"; then
+              echo "$name kuruldu."
+              return 0
+            fi
+            echo "UYARI: $name Library Manager'da bulunamadi."
+            return 1
+          }
+
+          # Internet radyosu: #include "Audio.h" -> schreibfaul1/ESP32-audioI2S
+          install_esp32_audio_i2s() {
+            echo "=== ESP32-audioI2S (Audio.h) kurulumu ==="
+            for name in "ESP32-audioI2S" "ESP32-audioI2S-master"; do
+              if install_named "$name"; then
+                return 0
+              fi
+            done
+            echo "Registry basarisiz, GitHub'dan klonlaniyor..."
+            $CLI lib install --git-url https://github.com/schreibfaul1/ESP32-audioI2S.git
           }
 
           install_mapped() {
             local key="${1,,}"
             case "$key" in
               *dht*) install_named "DHT sensor library"; install_named "Adafruit Unified Sensor" ;;
-              *audio*|esp32-audioi2s) install_named "ESP32-audioI2S" ;;
+              *esp8266audio*|*audiogenerator*) install_named "ESP8266Audio" ;;
+              *audio*|*esp32-audio*) install_esp32_audio_i2s ;;
               *geolinker*) install_named "GeoLinker"; install_named "ArduinoJson" ;;
               *adafruit_gfx*) install_named "Adafruit GFX Library"; install_named "Adafruit BusIO" ;;
               *adafruit_ssd1306*) install_named "Adafruit SSD1306" ;;
@@ -71,21 +90,31 @@ jobs:
               *espasyncwebserver*) install_named "ESP Async WebServer"; install_named "AsyncTCP" ;;
               *asynctcp*) install_named "AsyncTCP" ;;
               *tinygps*) install_named "TinyGPSPlus" ;;
-              *bluetoothserial*) echo "BluetoothSerial: ESP32 çekirdeği içinde" ;;
+              *bluetoothserial*) echo "BluetoothSerial: ESP32 cekirdegi icinde" ;;
               *softwareserial*) install_named "EspSoftwareSerial" ;;
-              *esp8266audio*|*audiogenerator*) install_named "ESP8266Audio" ;;
               *pwmservo*|*adafruit_pwm*) install_named "Adafruit PWM Servo Driver Library"; install_named "Adafruit BusIO" ;;
               *ds1302*) install_named "DS1302" ;;
               *)
-                install_named "$1"
+                install_named "$1" || true
                 ;;
             esac
           }
+
+          needs_audio=false
+          if echo "$SKETCH_CODE" | grep -qiE '#include\s*[<"][^">]*Audio\.h[>"]'; then
+            needs_audio=true
+            echo "Sketch Audio.h iceriyor -> ESP32-audioI2S zorunlu."
+            install_esp32_audio_i2s
+          fi
 
           if [ -n "${LIBS:-}" ]; then
             echo "$LIBS" | tr ',' '\n' | while IFS= read -r lib; do
               trim_lib=$(echo "$lib" | xargs)
               [ -z "$trim_lib" ] && continue
+              # Audio zaten yuklendiyse tekrar deneme
+              if [ "$needs_audio" = true ] && echo "${trim_lib,,}" | grep -q audio; then
+                continue
+              fi
               install_mapped "$trim_lib"
             done
           fi
