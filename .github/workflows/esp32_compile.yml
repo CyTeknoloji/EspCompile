@@ -7,7 +7,7 @@ on:
         description: 'Arduino/ESP32 Kodu'
         required: true
       libraries:
-        description: 'Kütüphaneler (Virgülle ayırın)'
+        description: 'Kütüphaneler (Virgülle ayırın, Library Manager adları)'
         required: false
       board_type:
         description: 'Kart Modeli (FQBN)'
@@ -26,86 +26,67 @@ jobs:
           curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
           echo "$GITHUB_WORKSPACE/bin" >> $GITHUB_PATH
 
-          # --- YENİ EKLENEN ÖNBELLEK (CACHE) ADIMI ---
       - name: ESP32 Çekirdek ve Kütüphane Önbelleği
         uses: actions/cache@v4
         with:
           path: |
             ~/.arduino15
             ~/Arduino/libraries
-          key: ${{ runner.os }}-arduino-esp32-v1
-      # -------------------------------------------
+          key: ${{ runner.os }}-arduino-esp32-v2
 
       - name: ESP32 Çekirdek Kurulumu
         run: |
           ./bin/arduino-cli core update-index --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
-          ./bin/arduino-cli core install esp32:esp32 --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
+          ./bin/arduino-cli core install esp32:esp32@3.1.1 --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
 
-      - name: Kütüphaneleri Kur (Tırnak ve Hata Ayıklamalı)
+      - name: Kütüphaneleri Kur
+        shell: bash
+        env:
+          LIBS: ${{ github.event.inputs.libraries }}
         run: |
-          LIBS="${{ github.event.inputs.libraries }}"
-          if [ ! -z "$LIBS" ]; then
-            # Virgülle ayrılmış listeyi satırlara böl ve işle
-            echo "$LIBS" | tr ',' '\n' | while read lib; do
-              # Boşlukları temizle
-              trim_lib=$(echo "$lib" | xargs)
-              
-              if [ ! -z "$trim_lib" ]; then
-                echo "--- İşleniyor: $trim_lib ---"
-                
-                # ÖZEL DURUM: Çok kullanılan kütüphaneleri manuel eşleştir (En garantisi)
-                # DHT türevlerinin hepsini yakala (büyük/küçük harf veya uzantı dahil)
-                if [[ "${trim_lib,,}" == *"dht"* ]]; then
-                  ./bin/arduino-cli lib install "DHT sensor library"
-                  ./bin/arduino-cli lib install "Adafruit Unified Sensor"
-                  continue
-                # Adafruit PWM Servo için eşleşme
-                elif [[ "${trim_lib,,}" == *"pwmservo"* || "${trim_lib,,}" == *"adafruit_pwm"* ]]; then
-                  ./bin/arduino-cli lib install "Adafruit PWM Servo Driver Library"
-                  ./bin/arduino-cli lib install "Adafruit BusIO"
-                  continue
-                elif [[ "$trim_lib" == "Adafruit_GFX" ]]; then
-                  ./bin/arduino-cli lib install "Adafruit GFX Library"
-                  continue
-                  # ESP32 BluetoothSerial için çekirdek içi kütüphaneyi zorla
-                elif [[ "$trim_lib" == *"BluetoothSerial"* ]]; then
-                  ./bin/arduino-cli lib install "BluetoothSerial"
-                  continue
-                  # TinyGPS++ kütüphanesini TinyGPSPlus olarak yönlendir
-                elif [[ "$trim_lib" == *"TinyGPS"* ]]; then
-                  ./bin/arduino-cli lib install "TinyGPSPlus"
-                  continue
-                  # DS1302 RTC Saat modülü için yönlendirme
-                elif [[ "$trim_lib" == *"DS1302"* ]]; then
-                  ./bin/arduino-cli lib install "DS1302"
-                  continue
-                  # Ses kütüphanesi (AudioGeneratorMP3.h vb.) için yönlendirme
-                elif [[ "$trim_lib" == *"AudioGenerator"* || "$trim_lib" == *"ESP8266Audio"* ]]; then
-                  ./bin/arduino-cli lib install "ESP8266Audio"
-                  continue
-                # ESP32 için SoftwareSerial eşleşmesi
-                elif [[ "$trim_lib" == *"SoftwareSerial"* ]]; then
-                  ./bin/arduino-cli lib install "EspSoftwareSerial"
-                  continue
-                fi
+          set -euo pipefail
+          CLI=./bin/arduino-cli
 
-                # 1. STRATEJİ: Doğrudan ismiyle kurmayı dene
-                if ./bin/arduino-cli lib install "$trim_lib"; then
-                  echo "$trim_lib başarıyla kuruldu."
-                else
-                  echo "$trim_lib bulunamadı, arama yapılıyor..."
-                  
-                  # 2. STRATEJİ: Arama yap ve dönen ismi temizle (Tırnakları kaldır)
-                  SEARCH_NAME=$(./bin/arduino-cli lib search "$trim_lib" --format text | grep "Name:" | head -n 1 | cut -d' ' -f2- | tr -d '"' | xargs)
-                  
-                  if [ ! -z "$SEARCH_NAME" ]; then
-                    echo "Temizlenmiş isim bulundu: $SEARCH_NAME. Kuruluyor..."
-                    ./bin/arduino-cli lib install "$SEARCH_NAME" || echo "Kurulum başarısız."
-                  else
-                    echo "$trim_lib için eşleşme yok."
-                  fi
-                fi
-              fi
+          install_named() {
+            local name="$1"
+            [ -z "$name" ] && return 0
+            echo "--- Kuruluyor: $name ---"
+            $CLI lib install "$name" || echo "UYARI: $name kurulamadı"
+          }
+
+          install_mapped() {
+            local key="${1,,}"
+            case "$key" in
+              *dht*) install_named "DHT sensor library"; install_named "Adafruit Unified Sensor" ;;
+              *audio*|esp32-audioi2s) install_named "ESP32-audioI2S" ;;
+              *geolinker*) install_named "GeoLinker"; install_named "ArduinoJson" ;;
+              *adafruit_gfx*) install_named "Adafruit GFX Library"; install_named "Adafruit BusIO" ;;
+              *adafruit_ssd1306*) install_named "Adafruit SSD1306" ;;
+              *arduinojson*) install_named "ArduinoJson" ;;
+              *ntpclient*) install_named "NTPClient" ;;
+              *universaltelegrambot*) install_named "Universal Telegram Bot Library"; install_named "ArduinoJson" ;;
+              *blynk*) install_named "Blynk" ;;
+              *sinric*) install_named "SinricPro" ;;
+              *esp_mail*) install_named "ESP Mail Client" ;;
+              *espasyncwebserver*) install_named "ESP Async WebServer"; install_named "AsyncTCP" ;;
+              *asynctcp*) install_named "AsyncTCP" ;;
+              *tinygps*) install_named "TinyGPSPlus" ;;
+              *bluetoothserial*) echo "BluetoothSerial: ESP32 çekirdeği içinde" ;;
+              *softwareserial*) install_named "EspSoftwareSerial" ;;
+              *esp8266audio*|*audiogenerator*) install_named "ESP8266Audio" ;;
+              *pwmservo*|*adafruit_pwm*) install_named "Adafruit PWM Servo Driver Library"; install_named "Adafruit BusIO" ;;
+              *ds1302*) install_named "DS1302" ;;
+              *)
+                install_named "$1"
+                ;;
+            esac
+          }
+
+          if [ -n "${LIBS:-}" ]; then
+            echo "$LIBS" | tr ',' '\n' | while IFS= read -r lib; do
+              trim_lib=$(echo "$lib" | xargs)
+              [ -z "$trim_lib" ] && continue
+              install_mapped "$trim_lib"
             done
           fi
 
@@ -117,19 +98,16 @@ jobs:
           import os
           content = os.environ.get('SKETCH_INPUT', '')
           os.makedirs('MySketch', exist_ok=True)
-          # Tırnakları yutmadan doğrudan dosyaya yazar
           with open('MySketch/MySketch.ino', 'w', encoding='utf-8') as f:
               f.write(content)
 
       - name: Derle ve Parçaları Oluştur
         run: |
           mkdir -p output
-          # --build-properties yerine --build-property kullanarak deprecated uyarısını siliyoruz
           ./bin/arduino-cli compile --fqbn ${{ github.event.inputs.board_type }} --build-property build.flash_mode=dio MySketch --output-dir ./output
 
       - name: Binary Dosyalarını Paketle
         run: |
-          # Dışarıdan esptool çalıştırmıyoruz, arduino-cli'nın ürettiklerini paketliyoruz
           zip -j esp32_builds.zip output/*.bin
 
       - name: Artifact Olarak Yayınla
