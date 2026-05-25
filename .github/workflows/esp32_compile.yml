@@ -96,6 +96,22 @@ jobs:
               *softwareserial*) install_named "EspSoftwareSerial" ;;
               *pwmservo*|*adafruit_pwm*) install_named "Adafruit PWM Servo Driver Library"; install_named "Adafruit BusIO" ;;
               *ds1302*) install_named "DS1302" ;;
+              *servo*|*varspeed*) install_named "Servo" ;;
+              *stepper*) install_named "Stepper" ;;
+              *mfrc*) install_named "MFRC522" ;;
+              *liquidcrystal*) install_named "LiquidCrystal I2C" ;;
+              *onewire*) install_named "OneWire" ;;
+              *irremote*) install_named "IRremote" ;;
+              *keypad*) install_named "Keypad" ;;
+              *hx711*) install_named "HX711 Arduino Library" ;;
+              *accel*) install_named "AccelStepper" ;;
+              *pubsub*) install_named "PubSubClient" ;;
+              *pulse*) install_named "PulseSensor Playground" ;;
+              *touchscreen*) install_named "TouchScreen" ;;
+              *adafruit_pcd*) install_named "Adafruit PCD8544"; install_named "Adafruit BusIO" ;;
+              *adafruit_tcs*) install_named "Adafruit TCS34725" ;;
+              *adafruit_mlx*) install_named "Adafruit MLX90614 Library"; install_named "Adafruit BusIO" ;;
+              *adafruit_neo*) install_named "Adafruit NeoPixel" ;;
               *)
                 install_named "$1" || true
                 ;;
@@ -108,6 +124,8 @@ jobs:
             echo "Sketch Audio.h iceriyor -> ESP32-audioI2S zorunlu."
             install_esp32_audio_i2s
           fi
+
+          echo "Uygulamadan gelen kutuphane listesi: [${LIBS:-bos}]"
 
           if [ -n "${LIBS:-}" ]; then
             echo "$LIBS" | tr ',' '\n' | while IFS= read -r lib; do
@@ -125,7 +143,7 @@ jobs:
           LIBRARY_FILES: ${{ github.event.inputs.library_files }}
         run: |
           python3 <<'PY'
-          import os, json, base64, zipfile
+          import os, json, base64, zipfile, shutil, tempfile
           from io import BytesIO
           raw = os.environ.get("LIBRARY_FILES", "")
           if not raw.strip():
@@ -136,10 +154,27 @@ jobs:
               for item in json.loads(raw):
                   name = (item.get("name") or "CustomLib").strip()
                   data = base64.b64decode(item.get("zip") or "")
-                  root = os.path.join(libs, name)
-                  os.makedirs(root, exist_ok=True)
-                  with zipfile.ZipFile(BytesIO(data)) as zf:
-                      zf.extractall(root)
+                  target = os.path.join(libs, name)
+                  os.makedirs(target, exist_ok=True)
+                  with tempfile.TemporaryDirectory() as tmp:
+                      with zipfile.ZipFile(BytesIO(data)) as zf:
+                          zf.extractall(tmp)
+                      entries = [e for e in os.listdir(tmp) if not e.startswith(".")]
+                      if len(entries) == 1 and os.path.isdir(os.path.join(tmp, entries[0])):
+                          root = os.path.join(tmp, entries[0])
+                          for n in os.listdir(root):
+                              src, dst = os.path.join(root, n), os.path.join(target, n)
+                              if os.path.isdir(src):
+                                  shutil.copytree(src, dst, dirs_exist_ok=True)
+                              else:
+                                  shutil.copy2(src, dst)
+                      else:
+                          for n in entries:
+                              src, dst = os.path.join(tmp, n), os.path.join(target, n)
+                              if os.path.isdir(src):
+                                  shutil.copytree(src, dst, dirs_exist_ok=True)
+                              else:
+                                  shutil.copy2(src, dst)
                   print("Installed", name)
           PY
 
