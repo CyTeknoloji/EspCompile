@@ -9,6 +9,9 @@ on:
       libraries:
         description: 'Kütüphaneler (Virgülle ayırın)'
         required: false
+      library_files:
+        description: 'Uygulamadan zip kütüphaneler (JSON)'
+        required: false
       board_type:
         description: 'Kart Modeli (FQBN)'
         required: true
@@ -60,7 +63,6 @@ jobs:
             return 1
           }
 
-          # Internet radyosu: #include "Audio.h" -> schreibfaul1/ESP32-audioI2S
           install_esp32_audio_i2s() {
             echo "=== ESP32-audioI2S (Audio.h) kurulumu ==="
             for name in "ESP32-audioI2S" "ESP32-audioI2S-master"; do
@@ -111,13 +113,35 @@ jobs:
             echo "$LIBS" | tr ',' '\n' | while IFS= read -r lib; do
               trim_lib=$(echo "$lib" | xargs)
               [ -z "$trim_lib" ] && continue
-              # Audio zaten yuklendiyse tekrar deneme
               if [ "$needs_audio" = true ] && echo "${trim_lib,,}" | grep -q audio; then
                 continue
               fi
               install_mapped "$trim_lib"
             done
           fi
+
+      - name: Uygulamadan gelen kütüphane zip dosyaları
+        env:
+          LIBRARY_FILES: ${{ github.event.inputs.library_files }}
+        run: |
+          python3 <<'PY'
+          import os, json, base64, zipfile
+          from io import BytesIO
+          raw = os.environ.get("LIBRARY_FILES", "")
+          if not raw.strip():
+              print("library_files bos, atlaniyor")
+          else:
+              libs = os.path.expanduser("~/Arduino/libraries")
+              os.makedirs(libs, exist_ok=True)
+              for item in json.loads(raw):
+                  name = (item.get("name") or "CustomLib").strip()
+                  data = base64.b64decode(item.get("zip") or "")
+                  root = os.path.join(libs, name)
+                  os.makedirs(root, exist_ok=True)
+                  with zipfile.ZipFile(BytesIO(data)) as zf:
+                      zf.extractall(root)
+                  print("Installed", name)
+          PY
 
       - name: Sketch Hazırla (Python ile Tırnak Koruması)
         shell: python
