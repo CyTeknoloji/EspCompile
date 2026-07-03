@@ -35,7 +35,7 @@ jobs:
           path: |
             ~/.arduino15
             ~/Arduino/libraries
-          key: ${{ runner.os }}-arduino-esp32-v3
+          key: ${{ runner.os }}-arduino-esp32-v4
 
       - name: ESP32 Çekirdek Kurulumu
         run: |
@@ -142,41 +142,7 @@ jobs:
         env:
           LIBRARY_FILES: ${{ github.event.inputs.library_files }}
         run: |
-          python3 <<'PY'
-          import os, json, base64, zipfile, shutil, tempfile
-          from io import BytesIO
-          raw = os.environ.get("LIBRARY_FILES", "")
-          if not raw.strip():
-              print("library_files bos, atlaniyor")
-          else:
-              libs = os.path.expanduser("~/Arduino/libraries")
-              os.makedirs(libs, exist_ok=True)
-              for item in json.loads(raw):
-                  name = (item.get("name") or "CustomLib").strip()
-                  data = base64.b64decode(item.get("zip") or "")
-                  target = os.path.join(libs, name)
-                  os.makedirs(target, exist_ok=True)
-                  with tempfile.TemporaryDirectory() as tmp:
-                      with zipfile.ZipFile(BytesIO(data)) as zf:
-                          zf.extractall(tmp)
-                      entries = [e for e in os.listdir(tmp) if not e.startswith(".")]
-                      if len(entries) == 1 and os.path.isdir(os.path.join(tmp, entries[0])):
-                          root = os.path.join(tmp, entries[0])
-                          for n in os.listdir(root):
-                              src, dst = os.path.join(root, n), os.path.join(target, n)
-                              if os.path.isdir(src):
-                                  shutil.copytree(src, dst, dirs_exist_ok=True)
-                              else:
-                                  shutil.copy2(src, dst)
-                      else:
-                          for n in entries:
-                              src, dst = os.path.join(tmp, n), os.path.join(target, n)
-                              if os.path.isdir(src):
-                                  shutil.copytree(src, dst, dirs_exist_ok=True)
-                              else:
-                                  shutil.copy2(src, dst)
-                  print("Installed", name)
-          PY
+          python3 scripts/install_library_files.py
 
       - name: Sketch Hazırla (Python ile Tırnak Koruması)
         shell: python
