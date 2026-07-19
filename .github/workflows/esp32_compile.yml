@@ -71,7 +71,7 @@ jobs:
               fi
             done
             echo "Registry basarisiz, GitHub'dan klonlaniyor..."
-            $CLI lib install --git-url https://github.com/schreibfaul1/ESP32-audioI2S.git
+            $CLI lib install --git-url https://github.com/schreibfaul1/ESP32-audioI2S.git || true
           }
 
           install_mapped() {
@@ -122,7 +122,7 @@ jobs:
           if echo "$SKETCH_CODE" | grep -qiE '#include\s*[<"][^">]*Audio\.h[>"]'; then
             needs_audio=true
             echo "Sketch Audio.h iceriyor -> ESP32-audioI2S zorunlu."
-            install_esp32_audio_i2s
+            install_esp32_audio_i2s || true
           fi
 
           echo "Uygulamadan gelen kutuphane listesi: [${LIBS:-bos}]"
@@ -134,7 +134,7 @@ jobs:
               if [ "$needs_audio" = true ] && echo "${trim_lib,,}" | grep -q audio; then
                 continue
               fi
-              install_mapped "$trim_lib"
+              install_mapped "$trim_lib" || true
             done
           fi
 
