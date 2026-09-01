@@ -16,6 +16,24 @@ on:
         description: 'Kart Modeli (FQBN)'
         required: true
         default: 'esp32:esp32:esp32'
+      sketch_code_2:
+        description: 'Kod parcasi 2 (buyuk sketch)'
+        required: false
+      sketch_code_3:
+        description: 'Kod parcasi 3 (buyuk sketch)'
+        required: false
+      sketch_code_4:
+        description: 'Kod parcasi 4 (buyuk sketch)'
+        required: false
+      sketch_code_5:
+        description: 'Kod parcasi 5 (buyuk sketch)'
+        required: false
+      sketch_code_6:
+        description: 'Kod parcasi 6 (buyuk sketch)'
+        required: false
+      sketch_code_7:
+        description: 'Kod parcasi 7 (buyuk sketch)'
+        required: false
 
 jobs:
   compile:
@@ -35,21 +53,50 @@ jobs:
           path: |
             ~/.arduino15
             ~/Arduino/libraries
-          key: ${{ runner.os }}-arduino-esp32-v4
+          key: ${{ runner.os }}-arduino-esp32-v3
 
       - name: ESP32 Çekirdek Kurulumu
         run: |
           ./bin/arduino-cli core update-index --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
           ./bin/arduino-cli core install esp32:esp32@3.1.1 --additional-urls https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
 
+      - name: Sketch hazirla
+        shell: python
+        env:
+          SKETCH_INPUT: ${{ github.event.inputs.sketch_code }}
+          SKETCH_INPUT_2: ${{ github.event.inputs.sketch_code_2 }}
+          SKETCH_INPUT_3: ${{ github.event.inputs.sketch_code_3 }}
+          SKETCH_INPUT_4: ${{ github.event.inputs.sketch_code_4 }}
+          SKETCH_INPUT_5: ${{ github.event.inputs.sketch_code_5 }}
+          SKETCH_INPUT_6: ${{ github.event.inputs.sketch_code_6 }}
+          SKETCH_INPUT_7: ${{ github.event.inputs.sketch_code_7 }}
+        run: |
+          import base64
+          import gzip
+          import os
+
+          parts = [os.environ.get("SKETCH_INPUT", "") or ""]
+          for index in range(2, 8):
+              chunk = os.environ.get(f"SKETCH_INPUT_{index}", "") or ""
+              if chunk:
+                  parts.append(chunk)
+          content = "".join(parts)
+          if content.startswith("GZIP_B64:"):
+              raw = base64.b64decode(content[len("GZIP_B64:"):])
+              content = gzip.decompress(raw).decode("utf-8")
+
+          os.makedirs("MySketch", exist_ok=True)
+          with open("MySketch/MySketch.ino", "w", encoding="utf-8") as f:
+              f.write(content)
+
       - name: Kütüphaneleri Kur
         shell: bash
         env:
           LIBS: ${{ github.event.inputs.libraries }}
-          SKETCH_CODE: ${{ github.event.inputs.sketch_code }}
         run: |
           set -euo pipefail
           CLI=./bin/arduino-cli
+          SKETCH_CODE="$(cat MySketch/MySketch.ino 2>/dev/null || echo '')"
 
           install_named() {
             local name="$1"
@@ -142,18 +189,41 @@ jobs:
         env:
           LIBRARY_FILES: ${{ github.event.inputs.library_files }}
         run: |
-          python3 scripts/install_library_files.py
-
-      - name: Sketch Hazırla (Python ile Tırnak Koruması)
-        shell: python
-        env:
-          SKETCH_INPUT: ${{ github.event.inputs.sketch_code }}
-        run: |
-          import os
-          content = os.environ.get('SKETCH_INPUT', '')
-          os.makedirs('MySketch', exist_ok=True)
-          with open('MySketch/MySketch.ino', 'w', encoding='utf-8') as f:
-              f.write(content)
+          python3 <<'PY'
+          import os, json, base64, zipfile, shutil, tempfile
+          from io import BytesIO
+          raw = os.environ.get("LIBRARY_FILES", "")
+          if not raw.strip():
+              print("library_files bos, atlaniyor")
+          else:
+              libs = os.path.expanduser("~/Arduino/libraries")
+              os.makedirs(libs, exist_ok=True)
+              for item in json.loads(raw):
+                  name = (item.get("name") or "CustomLib").strip()
+                  data = base64.b64decode(item.get("zip") or "")
+                  target = os.path.join(libs, name)
+                  os.makedirs(target, exist_ok=True)
+                  with tempfile.TemporaryDirectory() as tmp:
+                      with zipfile.ZipFile(BytesIO(data)) as zf:
+                          zf.extractall(tmp)
+                      entries = [e for e in os.listdir(tmp) if not e.startswith(".")]
+                      if len(entries) == 1 and os.path.isdir(os.path.join(tmp, entries[0])):
+                          root = os.path.join(tmp, entries[0])
+                          for n in os.listdir(root):
+                              src, dst = os.path.join(root, n), os.path.join(target, n)
+                              if os.path.isdir(src):
+                                  shutil.copytree(src, dst, dirs_exist_ok=True)
+                              else:
+                                  shutil.copy2(src, dst)
+                      else:
+                          for n in entries:
+                              src, dst = os.path.join(tmp, n), os.path.join(target, n)
+                              if os.path.isdir(src):
+                                  shutil.copytree(src, dst, dirs_exist_ok=True)
+                              else:
+                                  shutil.copy2(src, dst)
+                  print("Installed", name)
+          PY
 
       - name: Derle ve Parçaları Oluştur
         run: |
