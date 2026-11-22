@@ -146,7 +146,8 @@ jobs:
               *servo*|*varspeed*) install_named "Servo" ;;
               *stepper*) install_named "Stepper" ;;
               *mfrc*) install_named "MFRC522" ;;
-              *liquidcrystal*) install_named "LiquidCrystal I2C" ;;
+              *liquidcrystal*i2c*|*liquidcrystal_i2c*) install_named "LiquidCrystal I2C" ;;
+              *liquidcrystal*) install_named "LiquidCrystal" ;;
               *onewire*) install_named "OneWire" ;;
               *irremote*) install_named "IRremote" ;;
               *keypad*) install_named "Keypad" ;;
